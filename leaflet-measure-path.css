@@ -1,7 +1,7 @@
 .leaflet-measure-path-measurement {
     position: absolute;
     font-size: 10px;
-    color: black;
+    /* color: black; */
     text-shadow: -1px  0 0 white,
                  -1px -1px 0 white,
                   0 -1px 0 white,
@@ -15,8 +15,20 @@
     pointer-events: none;
 }
 
-.leaflet-measure-path-measurement > div {
+.leaflet-measure-path-measurement > div.measurement-label {
     position: relative;
     margin-top: -25%;
     left: -50%;
+}
+
+.name-label {
+    text-shadow: none;
+    text-align: center;
+    padding-top: 0.3em;
+    padding-right: 1em;
+    margin: auto;
+    font-weight: bold;
+    left: -44%;
+    word-break: normal;
+    position: relative;
 }
