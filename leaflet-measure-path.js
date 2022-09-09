@@ -1,9 +1,17 @@
+/*
+	Leaflet Measure Path, a plugin that adds measurements to the lines of polygons and circles and a label to the polygon or circle if updateLabel is called.
+	(c) 2016-2020, ProminentEdge, forked and edited by Brittany Chiu (2021-2022)
+
+	Original: https://github.com/ProminentEdge/leaflet-measure-path
+	Forked and Edited: https://github.com/brittanychiu/leaflet-measure-path
+*/
 !(function() {
     'use strict';
 
     L.Marker.Measurement = L[L.Layer ? 'Layer' : 'Class'].extend({
         options: {
-            pane: 'markerPane'
+            pane: 'markerPane',
+            color: 'black'
         },
 
         initialize: function(latlng, measurement, title, rotation, options) {
@@ -22,14 +30,30 @@
 
         onAdd: function(map) {
             this._map = map;
+            // for circles
+            if(this.options.fillColor) {
+                this.options.color = this.options.fillColor;
+            }
             var pane = this.getPane ? this.getPane() : map.getPanes().markerPane;
             var el = this._element = L.DomUtil.create('div', 'leaflet-zoom-animated leaflet-measure-path-measurement', pane);
-            var inner = L.DomUtil.create('div', '', el);
+            var inner = L.DomUtil.create('div', 'measurement-label', el);
             inner.title = this._title;
+            inner.style.color = this.options.color;
             inner.innerHTML = this._measurement;
-
+            
+            this.inner = inner
+            var currentzoom = map.getZoom();
+            if(currentzoom<4){
+                this._element.style.fontSize = '7px';
+            }
+            else if (currentzoom < 7) {
+                this._element.style.fontSize = '15px';
+            }
+            else {
+                this._element.style.fontSize = '20px';
+            }
             map.on('zoomanim', this._animateZoom, this);
-
+            
             this._setPosition();
         },
 
@@ -44,7 +68,96 @@
             L.DomUtil.setPosition(this._element, this._map.latLngToLayerPoint(this._latlng));
             this._element.style.transform += ' rotate(' + this._rotation + 'rad)';
         },
+        setColor: function(newColor) {
+            // for circles
+            if(this.options.fillColor) {
+                this.options.color = this.options.fillColor;
+            }
 
+            this.options.color = newColor;
+            this.inner.style.color = this.options.color;
+        },
+        _animateZoom: function(opt) {
+            var pos = this._map._latLngToNewLayerPoint(this._latlng, opt.zoom, opt.center).round();
+            L.DomUtil.setPosition(this._element, pos);
+            this._element.style.transform += ' rotate(' + this._rotation + 'rad)';
+        }
+    });
+
+    L.Marker.NameLabel = L[L.Layer ? 'Layer' : 'Class'].extend({
+        options: {
+            pane: 'markerPane'
+        },
+
+        initialize: function(latlng, title, color, rotation, options) {
+            L.setOptions(this, options);
+
+            this._latlng = latlng;
+            this._title = title;
+            this._color = color;
+            this._rotation = rotation;
+        },
+
+        addTo: function(map) {
+            map.addLayer(this);
+            return this;
+        },
+
+        onAdd: function(map) {
+            this._map = map;
+            var pane = this.getPane ? this.getPane() : map.getPanes().markerPane;
+            var el = this._element = L.DomUtil.create('div', 'leaflet-zoom-animated leaflet-measure-path-measurement', pane);
+            var inner = L.DomUtil.create('div', 'name-label', el);
+
+            inner.title = this._title;
+            inner.style.color = this._color;
+         
+            inner.innerHTML = this._title;
+
+
+            this.inner = inner;
+            var currentzoom = map.getZoom();
+            if(currentzoom<4){
+                this._element.style.fontSize = '7px';
+            }
+            else if (currentzoom < 7) {
+                this._element.style.fontSize = '15px';
+            }
+            else {
+                this._element.style.fontSize = '20px';
+            }
+            map.on('zoomanim', this._animateZoom, this);
+            map.on('zoomend', this._setTextSizeZoom, this);
+
+            this._setPosition();
+        },
+
+        onRemove: function(map) {
+            map.off('zoomanim', this._animateZoom, this);
+            map.off('zoomend', this._setTextSizeZoom, this);
+            var pane = this.getPane ? this.getPane() : map.getPanes().markerPane;
+            pane.removeChild(this._element);
+            this._map = null;
+        },
+        setColor: function(newColor) {
+            this.inner.style.color = newColor;
+        },
+        _setPosition: function() {
+            L.DomUtil.setPosition(this._element, this._map.latLngToLayerPoint(this._latlng));
+            this._element.style.transform += ' rotate(' + this._rotation + 'rad)';
+        },
+        _setTextSizeZoom: function() {
+            var currentzoom = this._map.getZoom();
+            if(currentzoom<4){
+                this.inner.style.fontSize = '7px';
+            }
+            else if (currentzoom < 7) {
+                this.inner.style.fontSize = '15px';
+            }
+            else {
+                this.inner.style.fontSize = '20px';
+            }
+        },
         _animateZoom: function(opt) {
             var pos = this._map._latLngToNewLayerPoint(this._latlng, opt.zoom, opt.center).round();
             L.DomUtil.setPosition(this._element, pos);
@@ -56,20 +169,21 @@
         return new L.Marker.Measurement(latLng, measurement, title, rotation, options);
     };
 
-    var formatDistance = function(d) {
-        var unit,
-            feet;
+    L.marker.nameLabel = function(latLng, title, color, rotation, options) {
+        return new L.Marker.NameLabel(latLng, title, color, rotation, options);
+    }
 
-        if (this._measurementOptions.imperial) {
-            feet = d / 0.3048;
-            if (feet > 3000) {
-                d = d / 1609.344;
-                unit = 'mi';
-            } else {
-                d = feet;
-                unit = 'ft';
-            }
-        } else {
+    var formatDistance = function(d) {
+        var unit;
+
+        if ( this._options.measurementType === "mi" ) {
+            d = d / 1609.34;
+            unit = "mi";
+        } else if (this._options.measurementType === "nm") { 
+            d = d / 1852;
+            unit = "nm";
+        }
+        else {
             if (d > 1000) {
                 d = d / 1000;
                 unit = 'km';
@@ -86,27 +200,14 @@
     }
 
     var formatArea = function(a) {
-        var unit,
-            sqfeet;
+        var unit;
 
-        if (this._measurementOptions.imperial) {
-            if (a > 404.685642) {
-                a = a / 4046.85642;
-                unit = 'ac';
-            } else {
-                a = a / 0.09290304;
-                unit = 'ft²';
-            }
-        } else if (this._measurementOptions.ha) {
-            if (a > 1000000000) {
-                a = a / 1000000000;
-                unit = 'km²';
-            } else if (a > 10000) {
-                a = a / 10000;
-                unit = 'ha';
-            } else {
-                unit = 'm²';
-            }
+        if (this._options.measurementType === "mi" ) {  // to miles
+            a = a  / Math.pow(1609.34, 2);;
+            unit = 'mi²';
+        } else if (this._options.measurementType === "nm") { //to nautical miles
+            a = a / Math.pow(1852, 2);
+            unit = 'nm²';
         } else {
             if (a > 1000000) {
                 a = a / 1000000;
@@ -167,13 +268,13 @@
      * Implements the showOnHover functionality if called for.
      */
     var addInitHook = function() {
-        var showOnHover = this.options.measurementOptions && this.options.measurementOptions.showOnHover;
+        var showOnHover = false;
         if (this.options.showMeasurements && !showOnHover) {
-            this.showMeasurements();
+            this.showMeasurements(this._options);
         }
-        if (this.options.showMeasurements && showOnHover) {
+        if(this.options.measurementType && this.options.showMeasurements && showOnHover){
             this.on('mouseover', function() {
-                this.showMeasurements();
+                this.showMeasurements(this._options);
             });
             this.on('mouseout', function() {
                 this.hideMeasurements();
@@ -182,8 +283,7 @@
     };
 
     var circleArea = function circleArea(d) {
-        var rho = d / RADIUS;
-        return 2 * Math.PI * RADIUS * RADIUS * (1 - Math.cos(rho));
+        return Math.PI * Math.pow(d, 2);
     };
 
     var override = function(method, fn, hookAfter) {
@@ -203,13 +303,39 @@
     };
 
     L.Polyline.include({
+        showNameLabel:function() {
+            if (!this._map || this._labelLayer) return this;
+
+            this._options = L.extend({
+                showOnHover: false,
+                showLabel: true
+            }, this._options || {});
+
+            this._labelLayer = L.layerGroup().addTo(this._map);
+            this.updateLabel();
+
+            this._map.on('zoomend', this.updateLabel, this);
+
+            return this;
+        },
+        hideNameLabel: function() {
+            if (!this._map) return this;
+
+            this._map.on('zoomend', this.updateLabel, this);
+
+            if (!this._labelLayer) return this;
+            this._map.removeLayer(this._labelLayer);
+            this._labelLayer = null;
+
+            return this;
+        },
         showMeasurements: function(options) {
             if (!this._map || this._measurementLayer) return this;
 
-            this._measurementOptions = L.extend({
-                showOnHover: (options && options.showOnHover) || false,
+            this._options = L.extend({
                 minPixelDistance: 30,
                 showDistances: true,
+                measurementType: (options && options.measurementType) || "km",
                 showArea: true,
                 showTotalDistance: true,
                 lang: {
@@ -217,10 +343,10 @@
                     totalArea: 'Total area',
                     segmentLength: 'Segment length'
                 }
-            }, options || {});
+            }, this._options || {});
 
             this._measurementLayer = L.layerGroup().addTo(this._map);
-            this.updateMeasurements();
+            this.updateMeasurements(options);
 
             this._map.on('zoomend', this.updateMeasurements, this);
 
@@ -240,9 +366,9 @@
         },
 
         onAdd: override(L.Polyline.prototype.onAdd, function(originalReturnValue) {
-            var showOnHover = this.options.measurementOptions && this.options.measurementOptions.showOnHover;
+            var showOnHover = false;
             if (this.options.showMeasurements && !showOnHover) {
-                this.showMeasurements(this.options.measurementOptions);
+                this.showMeasurements(this._options);
             }
 
             return originalReturnValue;
@@ -250,6 +376,7 @@
 
         onRemove: override(L.Polyline.prototype.onRemove, function(originalReturnValue) {
             this.hideMeasurements();
+            this.hideNameLabel()
 
             return originalReturnValue;
         }, true),
@@ -268,13 +395,46 @@
 
         formatDistance: formatDistance,
         formatArea: formatArea,
+        updateLabel: function() {
+            if (!this._labelLayer) return this;
 
-        updateMeasurements: function() {
+            var latLngs = this.getLatLngs(),
+                isPolygon = this instanceof L.Polygon,
+                options = this._options
+           
+                if(this._options.color){
+                    this._labelLayer.clearLayers();
+    
+                    // need to get bottom center
+                    var latLngLabel = $.extend(true, {}, latLngs)
+                    latLngLabel.lng = this.getBounds().getCenter().lng;
+                    latLngLabel.lat = this.getBounds()._southWest.lat;
+    
+                    L.marker.nameLabel(latLngLabel, this._options.id, this._options.color, 0, options)
+                        .addTo(this._labelLayer);
+                }
+
+            return this; 
+        },
+        updateColor: function(newColor){
+            if(this._measurementLayer){
+                this._measurementLayer.getLayers().forEach(function(element) {
+                    element.setColor(newColor)
+                });    
+            }
+
+            if(this._labelLayer){
+                this._labelLayer.getLayers().forEach(function(element){
+                    element.setColor(newColor)
+                })
+            }       
+        },
+        updateMeasurements: function(options) {
             if (!this._measurementLayer) return this;
 
             var latLngs = this.getLatLngs(),
                 isPolygon = this instanceof L.Polygon,
-                options = this._measurementOptions,
+                options = this._options,
                 totalDist = 0,
                 formatter,
                 ll1,
@@ -290,10 +450,9 @@
                 latLngs = latLngs[0];
             }
 
-            this._measurementLayer.clearLayers();
-
-            if (this._measurementOptions.showDistances && latLngs.length > 1) {
-                formatter = this._measurementOptions.formatDistance || L.bind(this.formatDistance, this);
+            if (this._options.showMeasurements && latLngs.length > 1) {
+                this._measurementLayer.clearLayers();
+                formatter = this._options.formatDistance || L.bind(this.formatDistance, this);
 
                 for (var i = 1, len = latLngs.length; (isPolygon && i <= len) || i < len; i++) {
                     ll1 = latLngs[i - 1];
@@ -315,7 +474,7 @@
                 }
 
                 // Show total length for polylines
-                if (!isPolygon && this._measurementOptions.showTotalDistance) {
+                if (!isPolygon && this._options.showTotalDistance) {
                     L.marker.measurement(ll2, formatter(totalDist), options.lang.totalLength, 0, options)
                         .addTo(this._measurementLayer);
                 }
@@ -331,7 +490,10 @@
 
             return this;
         },
-
+        updateMeasurementsAndLabel: function() {
+            this.updateMeasurements();
+            this.updateLabel();
+        },
         _getRotation: function(ll1, ll2) {
             var p1 = this._map.project(ll1),
                 p2 = this._map.project(ll2);
@@ -345,10 +507,39 @@
     });
 
     L.Circle.include({
+        showNameLabel:function() {
+            if (!this._map || this._labelLayer) return this;
+
+            this._options = L.extend({
+                showOnHover: false,
+                showLabel: true
+            }, this._options || {});
+
+            this._labelLayer = L.layerGroup().addTo(this._map);
+
+            if(this._options.lang) {
+                this.updateLabel();
+            }
+
+            this._map.on('zoomend', this.updateLabel, this);
+
+            return this;
+        },
+        hideNameLabel: function() {
+            if (!this._map) return this;
+
+            this._map.on('zoomend', this.updateLabel, this);
+
+            if (!this._labelLayer) return this;
+            this._map.removeLayer(this._labelLayer);
+            this._labelLayer = null;
+
+            return this;
+        },
         showMeasurements: function(options) {
             if (!this._map || this._measurementLayer) return this;
 
-            this._measurementOptions = L.extend({
+            this._options = L.extend({
                 showOnHover: false,
                 showArea: true,
                 lang: {
@@ -377,9 +568,9 @@
         },
 
         onAdd: override(L.Circle.prototype.onAdd, function(originalReturnValue) {
-            var showOnHover = this.options.measurementOptions && this.options.measurementOptions.showOnHover;
+            var showOnHover = false;
             if (this.options.showMeasurements && !showOnHover) {
-                this.showMeasurements(this.options.measurementOptions);
+                this.showMeasurements();
             }
 
             return originalReturnValue;
@@ -387,6 +578,7 @@
 
         onRemove: override(L.Circle.prototype.onRemove, function(originalReturnValue) {
             this.hideMeasurements();
+            this.hideNameLabel();
 
             return originalReturnValue;
         }, true),
@@ -404,23 +596,56 @@
         }),
 
         formatArea: formatArea,
+        updateLabel: function() {
+            if (!this._labelLayer) return;
 
-        updateMeasurements: function() {
+            var latLngLabel = $.extend(true, {}, this.getLatLng());
+
+            latLngLabel.lat = this.getBounds()._southWest.lat;
+
+            if (this._options.fillColor) {
+                this._labelLayer.clearLayers();
+                L.marker.nameLabel(latLngLabel, this._options.id, this._options.fillColor, 0, {})
+                    .addTo(this._labelLayer);
+            }
+        },
+        updateColor: function(newColor){
+            if(this._measurementLayer){
+                this._measurementLayer.getLayers().forEach(function(element) {
+                    element.setColor(newColor)
+                });    
+            }
+
+            if(this._labelLayer){
+                this._labelLayer.getLayers().forEach(function(element){
+                    element.setColor(newColor)
+                })
+            }       
+        },
+        updateMeasurements: function(options) {
             if (!this._measurementLayer) return;
 
             var latLng = this.getLatLng(),
-                options = this._measurementOptions,
+                options = this._options,
                 formatter = options.formatArea || L.bind(this.formatArea, this);
 
-            this._measurementLayer.clearLayers();
+            var latLngLabel = $.extend(true, {}, latLng);
+
+            latLngLabel.lng = this.getBounds().getCenter().lng;
+            latLngLabel.lat = this.getBounds()._southWest.lat;
 
             if (options.showArea) {
+                this._measurementLayer.clearLayers();
                 formatter = options.formatArea || L.bind(this.formatArea, this);
                 var area = circleArea(this.getRadius());
-                L.marker.measurement(latLng,
+                L.marker.measurement(latLngLabel,
                     formatter(area), options.lang.totalArea, 0, options)
                     .addTo(this._measurementLayer);
             }
+        },
+        updateMeasurementsAndLabel: function() {
+            this.updateMeasurements();
+            this.updateLabel();
         }
     })
 
